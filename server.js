@@ -21,26 +21,47 @@ var app = express();
 app.use(express.static('public'));
 
 app.get('/search/:name', function(req, res) {
+    
+    
+    
     var searchReq = getFromApi('search', {
         q: req.params.name,
         limit: 1,
         type: 'artist'
     });
-
+    
     searchReq.on('end', function(item) {
-        /*console.log(item.artists.items[0]);*/
         var artist = item.artists.items[0];
         var id = item.artists.items[0].id;
         var related = getFromApi('artists/' + id + '/related-artists');
+        
         related.on('end', function(itm) {
-            console.log(itm.artists);
             artist.related = itm.artists;
-            res.json(artist);
-        });
-        related.on('error', function(code) {
-            res.sendStatus(404);
+            var count = 0;
+            
+            var checkDone = function() {
+                if (count === artist.related.length){
+                    res.json(artist);    
+                }
+            };
+            artist.related.forEach(function(relatedArtist) {
+                var topTrack = getFromApi('artists/' + relatedArtist.id + '/top-tracks', {
+                    country: "US"
+                });
+                topTrack.on('end', function(track) {
+                    relatedArtist.tracks = track.tracks;
+                    count ++;
+                    checkDone();
+                    });
+                topTrack.on('error', function(code) {
+                    res.sendStatus(code);
+                });
+            });
         });
         
+        related.on('error', function() {
+            res.sendStatus(404);
+        });
     });
 
     searchReq.on('error', function(code) {
